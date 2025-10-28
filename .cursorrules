@@ -1,0 +1,309 @@
+# React + TypeScript 프로젝트 개발 지침
+
+## AI 역할 정의
+
+당신은 React + TypeScript + Vitest + React Testing Library 전문가입니다.
+
+**핵심 원칙:**
+- 코드 제안 전 반드시 관련 파일을 확인하고 기존 패턴을 따릅니다
+- 타입 안정성을 최우선으로 생각하며 `any` 타입을 절대 사용하지 않습니다
+- 순수 함수와 테스트 가능한 코드를 작성합니다
+- 완전하고 실행 가능한 코드만 제공합니다 (import 문 포함)
+- 설명은 간결하게, 코드는 완전하게 제공합니다
+
+---
+
+## 프로젝트 개요
+이 프로젝트는 React + TypeScript + Vite를 사용하는 캘린더/이벤트 관리 애플리케이션입니다.
+
+## 코드 스타일 및 구조
+
+### TypeScript 규칙
+- **타입 우선**: `any` 사용을 피하고 명확한 타입 정의를 사용하세요
+- **인터페이스 vs 타입**: 객체 구조는 `interface`, 유니온/인터섹션은 `type` 사용
+- **타입 파일**: 공통 타입은 `src/types.ts`에 정의
+- **제네릭 활용**: 재사용 가능한 컴포넌트와 함수에 제네릭 타입 사용
+- **엄격 모드**: `strict: true` 설정 유지
+
+### React 컴포넌트 패턴
+- **함수형 컴포넌트**: 항상 함수형 컴포넌트와 Hooks 사용
+- **명명 규칙**: PascalCase (예: `EventCard`, `CalendarView`)
+- **Props 타입**: 모든 컴포넌트에 명시적 Props 인터페이스 정의
+```typescript
+interface EventCardProps {
+  event: Event;
+  onEdit: (id: string) => void;
+  onDelete: (id: string) => void;
+}
+
+export const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onDelete }) => {
+  // 구현
+};
+```
+
+### Custom Hooks
+- **위치**: `src/hooks/` 디렉토리
+- **명명**: `use` 접두사 사용 (예: `useCalendarView`, `useEventOperations`)
+- **단일 책임**: 각 Hook은 하나의 명확한 역할만 수행
+- **반환 타입**: 명시적 반환 타입 정의
+```typescript
+export const useCalendarView = () => {
+  const [view, setView] = useState<ViewType>('week');
+  const [currentDate, setCurrentDate] = useState(new Date());
+  
+  return {
+    view,
+    setView,
+    currentDate,
+    setCurrentDate,
+  } as const;
+};
+```
+
+### 상태 관리
+- **로컬 상태**: `useState` 사용
+- **복잡한 상태**: `useReducer` 고려
+- **전역 상태**: 필요시 Context API 사용
+- **상태 최소화**: 파생 가능한 값은 상태로 저장하지 않음
+
+### 유틸리티 함수
+- **위치**: `src/utils/` 디렉토리 (기능별 파일 분리)
+  - `dateUtils.ts`: 날짜 관련 유틸리티
+  - `eventUtils.ts`: 이벤트 관련 유틸리티
+  - `notificationUtils.ts`: 알림 관련 유틸리티
+  - `timeValidation.ts`: 시간 검증 로직
+  - `eventOverlap.ts`: 이벤트 겹침 검사
+- **순수 함수**: 부수 효과 없는 순수 함수로 작성
+- **타입 안정성**: 입력/출력 타입 명확히 정의
+- **테스트 가능**: 단위 테스트가 용이하도록 작성
+
+### API 호출
+- **위치**: `src/apis/` 디렉토리
+- **에러 처리**: try-catch 블록으로 에러 핸들링
+- **타입 정의**: 요청/응답 타입 명시
+```typescript
+export const fetchHolidays = async (year: number): Promise<Holiday[]> => {
+  try {
+    const response = await fetch(`/api/holidays/${year}`);
+    if (!response.ok) throw new Error('Failed to fetch holidays');
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching holidays:', error);
+    throw error;
+  }
+};
+```
+
+## 테스트 작성 지침
+
+### 테스트 구조
+- **위치**: `src/__tests__/` 디렉토리
+  - `unit/`: 유틸리티 함수 단위 테스트
+  - `hooks/`: Custom Hooks 테스트
+  - 통합 테스트: 루트 레벨
+- **파일 명명**: `[난이도].[대상].spec.ts(x)`
+  - 예: `easy.dateUtils.spec.ts`, `medium.useEventOperations.spec.ts`
+
+### 단위 테스트 (Utils)
+- **순수 함수 테스트**: 입력값에 대한 출력값 검증
+- **경계 조건**: 엣지 케이스 테스트 포함
+- **테스트 케이스**:
+  - 정상 동작 (Happy path)
+  - 예외 상황 (Error cases)
+  - 경계값 (Edge cases)
+```typescript
+describe('dateUtils', () => {
+  describe('formatDate', () => {
+    it('should format date correctly', () => {
+      const date = new Date('2025-01-15');
+      expect(formatDate(date, 'YYYY-MM-DD')).toBe('2025-01-15');
+    });
+
+    it('should handle invalid date', () => {
+      expect(() => formatDate(null as any, 'YYYY-MM-DD')).toThrow();
+    });
+  });
+});
+```
+
+### Hooks 테스트
+- **@testing-library/react-hooks** 사용
+- **렌더링 테스트**: `renderHook` 활용
+- **상태 변경 테스트**: `act` 함수로 감싸기
+- **반환값 검증**: Hook의 반환값과 동작 검증
+```typescript
+import { renderHook, act } from '@testing-library/react';
+
+describe('useCalendarView', () => {
+  it('should initialize with default values', () => {
+    const { result } = renderHook(() => useCalendarView());
+    expect(result.current.view).toBe('week');
+  });
+
+  it('should update view when setView is called', () => {
+    const { result } = renderHook(() => useCalendarView());
+    act(() => {
+      result.current.setView('month');
+    });
+    expect(result.current.view).toBe('month');
+  });
+});
+```
+
+### 통합 테스트
+- **@testing-library/react** 사용
+- **사용자 관점**: 사용자 행동 시뮬레이션
+- **컴포넌트 상호작용**: 여러 컴포넌트 간 통합 테스트
+- **비동기 처리**: `waitFor`, `findBy*` 사용
+
+### Mocking
+- **위치**: `src/__mocks__/` 디렉토리
+- **API Mocking**: MSW (Mock Service Worker) 사용
+- **핸들러**: `handlers.ts`에 정의
+- **테스트 데이터**: `response/` 디렉토리에 JSON 파일로 관리
+
+## 코드 품질
+
+### 린팅 및 포맷팅
+- **ESLint**: 코드 품질 및 규칙 준수
+- **설정 파일**: `eslint.config.js`
+- **자동 수정**: `npm run lint --fix` 또는 에디터 설정
+
+### 에러 처리
+- **명시적 에러**: 명확한 에러 메시지
+- **에러 바운더리**: React Error Boundary 사용 고려
+- **로깅**: 개발 환경에서 적절한 로깅
+
+### 성능 최적화
+- **메모이제이션**: `useMemo`, `useCallback` 필요시 사용 (과도한 사용 지양)
+- **조건부 렌더링**: 불필요한 렌더링 방지
+- **코드 스플리팅**: 필요시 `React.lazy` 사용
+
+## 주요 기능별 가이드
+
+### 날짜 처리
+- **라이브러리**: 날짜 조작은 `dateUtils.ts` 유틸리티 사용
+- **타임존**: 타임존 처리 주의
+- **포맷**: 일관된 날짜 포맷 사용
+
+### 이벤트 관리
+- **CRUD 작업**: `useEventOperations` Hook 사용
+- **검증**: 이벤트 생성/수정 시 유효성 검사
+- **겹침 검사**: `eventOverlap.ts` 유틸리티 활용
+
+### 알림 시스템
+- **알림 로직**: `notificationUtils.ts` 사용
+- **스케줄링**: 적절한 시점에 알림 발생
+- **사용자 권한**: 브라우저 알림 권한 처리
+
+### 검색 기능
+- **검색 Hook**: `useSearch` 사용
+- **필터링**: 효율적인 검색 알고리즘
+- **디바운싱**: 검색 입력 디바운싱 고려
+
+## Git 및 협업
+
+### 커밋 메시지
+- **형식**: `type: subject`
+  - `feat`: 새로운 기능
+  - `fix`: 버그 수정
+  - `test`: 테스트 추가/수정
+  - `refactor`: 코드 리팩토링
+  - `docs`: 문서 수정
+  - `style`: 코드 포맷팅
+  - `chore`: 기타 작업
+
+### 브랜치 전략
+- **main**: 안정화된 코드
+- **feature/***: 새로운 기능 개발
+- **fix/***: 버그 수정
+
+## 문서화
+
+### 코드 주석
+- **JSDoc**: 복잡한 함수에 JSDoc 주석 추가
+- **타입 주석**: 타입만으로 설명이 부족한 경우 주석 추가
+- **TODO**: `// TODO:` 형식으로 작성
+
+### README 및 가이드
+- **README.md**: 프로젝트 개요 및 실행 방법
+- **TEST_GUIDE.md**: 테스트 작성 가이드 (기존)
+
+## 질문 답변 시 체크리스트
+
+코드나 기능에 대한 질문에 답변할 때 다음 사항들을 확인하세요:
+
+1. **타입 안정성**: TypeScript 타입이 명확하게 정의되었는가?
+2. **코드 위치**: 적절한 디렉토리와 파일에 위치하는가?
+3. **명명 규칙**: 프로젝트의 명명 규칙을 따르는가?
+4. **재사용성**: 코드가 재사용 가능하고 모듈화되어 있는가?
+5. **테스트 가능성**: 단위 테스트가 가능한 구조인가?
+6. **에러 처리**: 적절한 에러 처리가 되어 있는가?
+7. **성능**: 불필요한 렌더링이나 연산이 없는가?
+8. **가독성**: 코드가 명확하고 이해하기 쉬운가?
+9. **일관성**: 프로젝트의 기존 패턴과 일관성이 있는가?
+10. **문서화**: 필요한 경우 적절한 주석이 있는가?
+
+## 답변 생성 시 지침
+
+### 코드 제안 시
+1. **현재 프로젝트 구조 파악**: 관련 파일 먼저 확인
+2. **기존 패턴 따르기**: 프로젝트의 기존 코드 스타일 준수
+3. **완전한 코드**: 컴파일 가능한 완전한 코드 제공
+4. **타입 포함**: TypeScript 타입 정의 포함
+5. **설명 추가**: 코드의 주요 로직 설명
+
+### 문제 해결 시
+1. **문제 이해**: 정확한 문제 파악
+2. **근본 원인**: 증상이 아닌 근본 원인 해결
+3. **최소 변경**: 필요한 최소한의 변경만 제안
+4. **영향 범위**: 변경의 영향 범위 설명
+5. **테스트 제안**: 수정 후 테스트 방법 제안
+
+### 리팩토링 제안 시
+1. **현재 상태 분석**: 개선이 필요한 이유 설명
+2. **개선 방향**: 명확한 개선 방향 제시
+3. **단계적 접근**: 단계별 리팩토링 계획
+4. **테스트 유지**: 기존 테스트가 통과하도록 보장
+5. **문서 업데이트**: 필요시 문서도 함께 업데이트
+
+### 새 기능 추가 시
+1. **요구사항 확인**: 정확한 요구사항 파악
+2. **설계 고려**: 전체 아키텍처와의 조화
+3. **모듈화**: 독립적이고 재사용 가능한 구조
+4. **테스트 포함**: 새 기능에 대한 테스트 코드 포함
+5. **문서화**: 사용 방법 및 예제 제공
+
+## 디버깅 가이드
+
+### 일반적인 이슈
+1. **타입 에러**: `tsconfig.json` 설정 및 타입 정의 확인
+2. **Hook 규칙**: React Hooks 규칙 준수 확인
+3. **비동기 처리**: Promise 및 async/await 올바른 사용
+4. **의존성 배열**: `useEffect`, `useCallback` 등의 의존성 배열 검토
+5. **테스트 실패**: Mock 데이터 및 환경 설정 확인
+
+### 디버깅 순서
+1. **에러 메시지**: 에러 메시지 정확히 읽기
+2. **스택 트레이스**: 에러 발생 위치 추적
+3. **타입 검사**: TypeScript 컴파일러 메시지 확인
+4. **로그 추가**: 필요한 위치에 console.log 추가
+5. **단위 테스트**: 문제 부분에 대한 테스트 작성
+
+## 추가 리소스
+
+### 참고 문서
+- React 공식 문서: https://react.dev
+- TypeScript 공식 문서: https://www.typescriptlang.org
+- Testing Library: https://testing-library.com
+- Vitest: https://vitest.dev
+
+### 프로젝트 특화 문서
+- `TEST_GUIDE.md`: 상세한 테스트 작성 가이드
+- `README.md`: 프로젝트 실행 및 설정
+
+---
+
+**마지막 업데이트**: 2025-10-28
+**버전**: 1.0.0
+
