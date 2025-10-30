@@ -340,3 +340,169 @@ it('notificationTime을 10으로 하면 지정 시간 10분 전 알람 텍스트
 
   expect(screen.getByText('10분 후 기존 회의 일정이 시작됩니다.')).toBeInTheDocument();
 });
+
+/**
+ * 🔴 RED: 반복 일정 기능 통합 테스트
+ */
+describe('반복 일정', () => {
+  it('반복 일정 생성, 표시, 수정, 삭제가 올바르게 작동해야 한다', async () => {
+    // Arrange
+    setupMockHandlerCreation();
+    setupMockHandlerUpdating();
+    setupMockHandlerDeletion();
+    const { user } = setup(<App />);
+
+    // 일정 로딩 완료 대기
+    await screen.findByText('일정 로딩 완료!');
+
+    // 1. 매일 반복 일정 생성
+    await user.click(screen.getAllByText('일정 추가')[0]);
+    await user.type(screen.getByLabelText('제목'), '매일 반복 회의');
+    await user.type(screen.getByLabelText('날짜'), '2024-07-01');
+    await user.type(screen.getByLabelText('시작 시간'), '10:00');
+    await user.type(screen.getByLabelText('종료 시간'), '11:00');
+    await user.type(screen.getByLabelText('설명'), '매일 반복');
+    await user.type(screen.getByLabelText('위치'), '회의실');
+    await user.click(screen.getByLabelText('카테고리'));
+    await user.click(within(screen.getByLabelText('카테고리')).getByRole('combobox'));
+    await user.click(screen.getByRole('option', { name: '업무-option' }));
+
+    // 반복 설정
+    await user.click(screen.getByLabelText('반복 설정'));
+
+    // 🔴 실패 예상: 반복 유형 Select가 나타나지 않음
+    const repeatTypeSelect = await screen.findByLabelText('반복 유형');
+    await user.click(within(repeatTypeSelect).getByRole('combobox'));
+    await user.click(screen.getByRole('option', { name: '매일-option' }));
+    await user.type(screen.getByLabelText('반복 간격'), '1');
+    await user.type(screen.getByLabelText('반복 종료일'), '2024-07-03');
+
+    await act(async () => {
+      await user.click(screen.getByTestId('event-submit-button'));
+    });
+
+    // 🔴 실패 예상: 반복 일정이 생성되지 않음
+    const recurringEvents = await screen.findAllByText(/매일 반복 회의/);
+    expect(recurringEvents.length).toBeGreaterThan(1);
+
+    // 2. 반복 일정 아이콘 확인
+    // 🔴 실패 예상: data-recurring 속성이 없음
+    const firstEvent = screen.getAllByText(/매일 반복 회의/)[0].closest('[data-testid*="event"]');
+    expect(firstEvent).toHaveAttribute('data-recurring', 'true');
+
+    // 3. 일반 일정 생성 (비교용)
+    await saveSchedule(user, {
+      title: '일반 회의',
+      date: '2024-07-01',
+      startTime: '14:00',
+      endTime: '15:00',
+      description: '일반 일정',
+      location: '회의실 B',
+      category: '업무',
+    });
+
+    await act(async () => {
+      await user.click(screen.getByTestId('event-submit-button'));
+    });
+
+    // 일반 일정은 data-recurring 속성이 없어야 함
+    const normalEvent = (await screen.findByText('일반 회의')).closest('[data-testid*="event"]');
+    expect(normalEvent).not.toHaveAttribute('data-recurring', 'true');
+
+    // 4. 반복 일정 단일 수정
+    const eventToEdit = screen.getAllByText(/매일 반복 회의/)[1];
+    await user.click(eventToEdit);
+
+    const editButtons = screen.getAllByLabelText('Edit event');
+    await user.click(editButtons[0]);
+
+    // 🔴 실패 예상: 수정 확인 다이얼로그가 나타나지 않음
+    expect(await screen.findByText('해당 일정만 수정하시겠어요?')).toBeInTheDocument();
+
+    // 단일 수정 선택
+    await user.click(screen.getByRole('button', { name: '예' }));
+
+    await user.clear(screen.getByLabelText('제목'));
+    await user.type(screen.getByLabelText('제목'), '단일 수정된 회의');
+
+    await act(async () => {
+      await user.click(screen.getByTestId('event-submit-button'));
+    });
+
+    // 🔴 실패 예상: 단일 수정된 일정이 일반 일정으로 변경되지 않음
+    const editedEvent = (await screen.findByText('단일 수정된 회의')).closest(
+      '[data-testid*="event"]'
+    );
+    expect(editedEvent).not.toHaveAttribute('data-recurring', 'true');
+
+    // 나머지 반복 일정은 여전히 반복 아이콘 유지
+    const remainingEvents = screen.getAllByText(/매일 반복 회의/);
+    expect(remainingEvents.length).toBeGreaterThan(0);
+
+    // 5. 반복 일정 전체 수정
+    const anotherEvent = screen.getAllByText(/매일 반복 회의/)[0];
+    await user.click(anotherEvent);
+
+    const editButtons2 = screen.getAllByLabelText('Edit event');
+    await user.click(editButtons2[0]);
+
+    expect(await screen.findByText('해당 일정만 수정하시겠어요?')).toBeInTheDocument();
+
+    // 전체 수정 선택
+    await user.click(screen.getByRole('button', { name: '아니오' }));
+
+    await user.clear(screen.getByLabelText('제목'));
+    await user.type(screen.getByLabelText('제목'), '전체 수정된 회의');
+
+    await act(async () => {
+      await user.click(screen.getByTestId('event-submit-button'));
+    });
+
+    // 🔴 실패 예상: 모든 반복 일정이 수정되지 않음
+    const allEditedEvents = await screen.findAllByText(/전체 수정된 회의/);
+    expect(allEditedEvents.length).toBeGreaterThan(1);
+
+    // 모든 반복 일정은 여전히 data-recurring 유지
+    allEditedEvents.forEach((event) => {
+      const eventElement = event.closest('[data-testid*="event"]');
+      expect(eventElement).toHaveAttribute('data-recurring', 'true');
+    });
+
+    // 6. 반복 일정 단일 삭제
+    const eventToDelete = screen.getAllByText(/전체 수정된 회의/)[0];
+    await user.click(eventToDelete);
+
+    const deleteButtons = screen.getAllByLabelText('Delete event');
+    await user.click(deleteButtons[0]);
+
+    // 🔴 실패 예상: 삭제 확인 다이얼로그가 나타나지 않음
+    expect(await screen.findByText('해당 일정만 삭제하시겠어요?')).toBeInTheDocument();
+
+    // 단일 삭제 선택
+    await user.click(screen.getByRole('button', { name: '예' }));
+
+    // 🔴 실패 예상: 해당 일정만 삭제되지 않음
+    const remainingAfterSingleDelete = await screen.findAllByText(/전체 수정된 회의/);
+    expect(remainingAfterSingleDelete.length).toBeGreaterThan(0);
+
+    // 7. 반복 일정 전체 삭제
+    const lastEvent = screen.getAllByText(/전체 수정된 회의/)[0];
+    await user.click(lastEvent);
+
+    const deleteButtons2 = screen.getAllByLabelText('Delete event');
+    await user.click(deleteButtons2[0]);
+
+    expect(await screen.findByText('해당 일정만 삭제하시겠어요?')).toBeInTheDocument();
+
+    // 전체 삭제 선택
+    await user.click(screen.getByRole('button', { name: '아니오' }));
+
+    // 🔴 실패 예상: 모든 반복 일정이 삭제되지 않음
+    await act(async () => {
+      // 약간의 대기 시간
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    });
+
+    expect(screen.queryByText(/전체 수정된 회의/)).not.toBeInTheDocument();
+  });
+});
