@@ -467,6 +467,8 @@ function App() {
                   labelId="repeat-type-label"
                   aria-label="반복 유형"
                 >
+                  <MenuItem value="none">선택 안 함</MenuItem>
+
                   <MenuItem value="daily" aria-label="매일-option">
                     매일
                   </MenuItem>
